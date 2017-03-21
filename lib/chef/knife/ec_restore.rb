@@ -63,12 +63,11 @@ class Chef
       def create_organization(orgname)
         org = JSONCompat.from_json(File.read("#{dest_dir}/organizations/#{orgname}/org.json"))
         rest.post('organizations', org)
-      rescue Net::HTTPServerException => e
-        if e.response.code == "409"
+      rescue Net::HTTPServerException => ex
+        if ex.response.code == "409"
           rest.put("organizations/#{orgname}", org)
-        else
-          raise
         end
+        knife_ec_error_handler.add(ex)
       end
 
       def restore_open_invitations(orgname)
@@ -76,10 +75,11 @@ class Chef
         invitations.each do |invitation|
           begin
             rest.post("organizations/#{orgname}/association_requests", { 'user' => invitation['username'] })
-          rescue Net::HTTPServerException => e
-            if e.response.code != "409"
+          rescue Net::HTTPServerException => ex
+            if ex.response.code != "409"
               ui.error("Cannot create invitation #{invitation['id']}")
             end
+            knife_ec_error_handler.add(ex)
           end
         end
       end
@@ -92,10 +92,8 @@ class Chef
             response = rest.post("organizations/#{orgname}/association_requests", { 'user' => username })
             association_id = response["uri"].split("/").last
             rest.put("users/#{username}/association_requests/#{association_id}", { 'response' => 'accept' })
-          rescue Net::HTTPServerException => e
-            if e.response.code != "409"
-              raise
-            end
+          rescue Net::HTTPServerException => ex
+            knife_ec_error_handler.add(ex)
           end
         end
       end
@@ -137,12 +135,11 @@ class Chef
             user_with_password = user.dup
             user_with_password['password'] = SecureRandom.hex
             rest.post('users', user_with_password)
-          rescue Net::HTTPServerException => e
-            if e.response.code == "409"
+          rescue Net::HTTPServerException => ex
+            if ex.response.code == "409"
               rest.put("users/#{name}", user)
-            else
-              raise
             end
+            knife_ec_error_handler.add(ex)
           end
         end
         purge_users_on_restore
@@ -284,6 +281,8 @@ class Chef
           ['admins', 'billing-admins', 'public_key_read_access'].each do |group|
             restore_group(Chef::ChefFS::Config.new, group)
           end
+         rescue Net::HTTPServerException => ex
+           knife_ec_error_handler.add(ex)
          ensure
           Chef::Config.restore(old_config)
         end
@@ -347,6 +346,8 @@ class Chef
             rest.put("#{url}/#{permission}", { permission => acls[permission] })
           end
         end
+      rescue Net::HTTPServerException => ex
+        knife_ec_error_handler.add(ex)
       end
     end
   end
